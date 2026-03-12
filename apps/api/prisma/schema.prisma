@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum WhatsAppSessionStatus {
+  PENDING
+  QR_CODE
+  CONNECTED
+  DISCONNECTED
+  FAILED
+}
+
+enum AutoReplyMode {
+  DISABLED
+  SEMI_AUTO
+  FULL_AUTO
+}
+
+enum MatchDecision {
+  AUTO_SEND
+  REVIEW
+  REJECTED
+}
+
+enum OutgoingMessageStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions         WhatsAppSession[]
+  monitoredGroups  MonitoredGroup[]
+  filters          UserFilter[]
+  incomingMessages IncomingMessage[]
+  matchResults     MatchResult[]
+  outgoingMessages OutgoingMessage[]
+  auditLogs        AuditLog[]
+
+  @@map("users")
+}
+
+model WhatsAppSession {
+  id         String                 @id @default(cuid())
+  userId     String
+  provider   String                 @default("stub")
+  status     WhatsAppSessionStatus  @default(PENDING)
+  sessionRef String?
+  lastSeenAt DateTime?
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groups           Group[]
+  incomingMessages IncomingMessage[]
+
+  @@map("whatsapp_sessions")
+}
+
+model Group {
+  id              String    @id @default(cuid())
+  sessionId       String
+  externalGroupId String
+  groupName       String
+  isActive        Boolean   @default(true)
+  lastSyncAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  session          WhatsAppSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  monitoredGroups  MonitoredGroup[]
+  incomingMessages IncomingMessage[]
+
+  @@unique([sessionId, externalGroupId])
+  @@map("groups")
+}
+
+model MonitoredGroup {
+  id                String   @id @default(cuid())
+  userId            String
+  groupId           String
+  monitoringEnabled Boolean  @default(true)
+  priority          Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+  @@map("monitored_groups")
+}
+
+model UserFilter {
+  id                 String        @id @default(cuid())
+  userId             String        @unique
+  specialty          String
+  cities             String[]      @default([])
+  hospitals          String[]      @default([])
+  minValue           Float?
+  maxDistanceKm      Float?
+  acceptedShifts     String[]      @default([])
+  requiredKeywords   String[]      @default([])
+  blockedKeywords    String[]      @default([])
+  autoReplyMode      AutoReplyMode @default(DISABLED)
+  autoReplyThreshold Float         @default(0.85)
+  semiAutoThreshold  Float         @default(0.6)
+  replyTemplate      String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_filters")
+}
+
+model IncomingMessage {
+  id                String   @id @default(cuid())
+  userId            String
+  sessionId         String
+  groupId           String
+  externalMessageId String
+  senderName        String
+  senderNumber      String
+  messageText       String
+  rawPayload        Json?
+  receivedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session WhatsAppSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  group   Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  parsedMessage   ParsedMessage?
+  matchResult     MatchResult?
+  outgoingMessage OutgoingMessage?
+
+  @@unique([sessionId, externalMessageId])
+  @@map("incoming_messages")
+}
+
+model ParsedMessage {
+  id                String   @id @default(cuid())
+  incomingMessageId String   @unique
+  possibleShiftOffer Boolean  @default(false)
+  extractedCity     String?
+  extractedHospital String?
+  extractedDate     String?
+  extractedShift    String?
+  extractedValue    Float?
+  extractedSpecialty String?
+  extractedKeywords String[]  @default([])
+  parserVersion     String   @default("1.0.0")
+  createdAt         DateTime @default(now())
+
+  incomingMessage IncomingMessage @relation(fields: [incomingMessageId], references: [id], onDelete: Cascade)
+
+  @@map("parsed_messages")
+}
+
+model MatchResult {
+  id                String        @id @default(cuid())
+  incomingMessageId String        @unique
+  userId            String
+  score             Float
+  decision          MatchDecision
+  rationale         String
+  matchedFields     String[]      @default([])
+  classifierVersion String        @default("1.0.0")
+  processedAt       DateTime      @default(now())
+  createdAt         DateTime      @default(now())
+
+  incomingMessage IncomingMessage @relation(fields: [incomingMessageId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("match_results")
+}
+
+model OutgoingMessage {
+  id                String                @id @default(cuid())
+  userId            String
+  incomingMessageId String                @unique
+  destinationRef    String
+  messageText       String
+  sendMode          AutoReplyMode
+  status            OutgoingMessageStatus @default(PENDING)
+  providerResponse  Json?
+  sentAt            DateTime?
+  createdAt         DateTime              @default(now())
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  incomingMessage IncomingMessage @relation(fields: [incomingMessageId], references: [id], onDelete: Cascade)
+
+  @@map("outgoing_messages")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  eventType  String
+  entityType String?
+  entityId   String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([eventType])
+  @@map("audit_logs")
+}
