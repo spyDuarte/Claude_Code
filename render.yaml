@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: plantao-radar-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./
+    plan: free
+    healthCheckPath: /health
+    dockerCommand: /bin/sh -c "cd /app/apps/api && npx prisma migrate deploy && node dist/main"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3001"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: plantao-radar-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: plantao-radar-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: WHATSAPP_PROVIDER
+        value: stub
+
+  - type: keyvalue
+    name: plantao-radar-redis
+    plan: free
+    ipAllowList: []
+
+databases:
+  - name: plantao-radar-db
+    plan: free
+    databaseName: plantao_radar
+    user: plantao
