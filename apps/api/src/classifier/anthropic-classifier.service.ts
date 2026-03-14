@@ -1,42 +1,41 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { ClassifierResponseSchema } from '@plantao-radar/shared';
 import type { ClassifierResponse } from '@plantao-radar/shared';
 import type { IClassifierService, ClassifyInput } from './interfaces/classifier.interface';
 import { FallbackClassifierService } from './fallback-classifier.service';
 
 @Injectable()
-export class OpenAiClassifierService implements IClassifierService {
-  private readonly logger = new Logger(OpenAiClassifierService.name);
-  private openai: OpenAI;
+export class AnthropicClassifierService implements IClassifierService {
+  private readonly logger = new Logger(AnthropicClassifierService.name);
+  private client: Anthropic;
   private model: string;
 
   constructor(
     private config: ConfigService,
     private fallback: FallbackClassifierService,
   ) {
-    const apiKey = this.config.get<string>('openai.apiKey');
-    this.model = this.config.get<string>('openai.model') ?? 'gpt-4o-mini';
-
-    this.openai = new OpenAI({ apiKey: apiKey ?? 'not-configured' });
+    const apiKey = this.config.get<string>('anthropic.apiKey');
+    this.model = this.config.get<string>('anthropic.model') ?? 'claude-opus-4-6';
+    this.client = new Anthropic({ apiKey: apiKey ?? 'not-configured' });
   }
 
   async classify(input: ClassifyInput): Promise<ClassifierResponse> {
-    if (!this.config.get<string>('openai.apiKey')) {
-      this.logger.warn('OpenAI API key not configured — using fallback classifier');
+    if (!this.config.get<string>('anthropic.apiKey')) {
+      this.logger.warn('Anthropic API key not configured — using fallback classifier');
       return this.fallback.classify(input);
     }
 
     try {
-      return await this.callOpenAi(input);
+      return await this.callAnthropic(input);
     } catch (err) {
-      this.logger.error('OpenAI classifier failed, using fallback', err);
+      this.logger.error('Anthropic classifier failed, using fallback', err);
       return this.fallback.classify(input);
     }
   }
 
-  private async callOpenAi(input: ClassifyInput): Promise<ClassifierResponse> {
+  private async callAnthropic(input: ClassifyInput): Promise<ClassifierResponse> {
     const { messageText, userFilter, parsedContext } = input;
 
     const systemPrompt = `You are a medical shift opportunity classifier for Brazilian doctors.
@@ -82,23 +81,19 @@ MESSAGE:
 
 Classify this message and return the JSON object.`;
 
-    const response = await this.openai.chat.completions.create({
+    const response = await this.client.messages.create({
       model: this.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.1,
       max_tokens: 500,
-      response_format: { type: 'json_object' },
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('Empty response from OpenAI');
+    const textBlock = response.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      throw new Error('Empty response from Anthropic');
     }
 
-    const parsed = JSON.parse(content) as unknown;
+    const parsed = JSON.parse(textBlock.text) as unknown;
     const validated = ClassifierResponseSchema.parse(parsed);
     return validated;
   }

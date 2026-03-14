@@ -11,6 +11,13 @@ export default () => ({
     secret: process.env['JWT_SECRET'] ?? 'change-me-in-production',
     expiresIn: process.env['JWT_EXPIRES_IN'] ?? '7d',
   },
+  ai: {
+    provider: process.env['AI_CLASSIFIER_PROVIDER'] ?? 'anthropic',
+  },
+  anthropic: {
+    apiKey: process.env['ANTHROPIC_API_KEY'],
+    model: process.env['ANTHROPIC_MODEL'] ?? 'claude-opus-4-6',
+  },
   openai: {
     apiKey: process.env['OPENAI_API_KEY'],
     model: process.env['OPENAI_MODEL'] ?? 'gpt-4o-mini',

@@ -31,6 +31,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "ioredis": "^5.3.2",
+    "@anthropic-ai/sdk": "^0.30.0",
     "openai": "^4.47.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -64,7 +65,7 @@
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
     "moduleNameMapper": {
-      "@plantao-radar/shared": "<rootDir>/../../packages/shared/src/index.ts"
+      "@plantao-radar/shared": "<rootDir>/../../../packages/shared/src/index.ts"
     }
   },
   "prisma": {
